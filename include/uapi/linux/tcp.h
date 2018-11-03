@@ -117,6 +117,8 @@ enum {
 #define TCP_SAVED_SYN		28	/* Get SYN headers recorded for connection */
 #define TCP_REPAIR_WINDOW	29	/* Get/set window parameters */
 #define TCP_FASTOPEN_CONNECT	30	/* Attempt FastOpen with connect */
+#define TCP_AO_REGISTER		50	/* register AO key */
+#define TCP_AO_UNREGISTER	51	/* unregister AO key */
 
 struct tcp_repair_opt {
 	__u32	opt_code;
@@ -241,5 +243,44 @@ struct tcp_md5sig {
 	__u32	__tcpm_pad2;				/* zero */
 	__u8	tcpm_key[TCP_MD5SIG_MAXKEYLEN];		/* key (binary) */
 };
+
+enum tcpao_kdf
+{
+	TCPAO_KDF_HMAC_SHA1    = 0,
+	TCPAO_KDF_AES_128_CMAC = 1,
+	TCPAO_KDF_DUMBASS      = 0xDEAD,
+};
+
+enum tcao_hmac
+{
+	TCPAO_HMAC_SHA_1_96   = 0,
+	TCPAO_AES_128_CMAC_96 = 1,
+	TCPAO_HMAC_DUMBASS    = 0xDEAD,
+};
+
+enum tcpao_flags
+{
+	TCPAO_OTHER_OPTS = 0x01,
+	TCPAO_LOCAL_NAT  = 0x02,
+	TCPAO_REMOTE_NAT = 0x04,
+};
+
+#define TCP_AO_MAX_MASTER_LEN 128
+
+struct tcpao_key
+{
+	struct  __kernel_sockaddr_storage addr;
+
+	__u8 send_id;
+	__u8 recv_id;
+
+	__u16 flags;
+
+	__u16 kdf;
+	__u16 hmac;
+
+	__u16 master_len;
+	__u8 master[TCP_AO_MAX_MASTER_LEN];
+} __attribute__((packed));
 
 #endif /* _UAPI_LINUX_TCP_H */

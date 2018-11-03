@@ -354,10 +354,10 @@ struct tcp_sock {
 			   * while socket was owned by user.
 			   */
 
-#ifdef CONFIG_TCP_MD5SIG
-/* TCP AF-Specific parts; only used by MD5 Signature support so far */
+/* TCP AF-Specific parts; used by MD5 Signature and AO support */
 	const struct tcp_sock_af_ops	*af_specific;
 
+#ifdef CONFIG_TCP_MD5SIG
 /* TCP MD5 Signature Option information */
 	struct tcp_md5sig_info	__rcu *md5sig_info;
 #endif

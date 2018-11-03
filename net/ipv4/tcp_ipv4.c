@@ -1041,6 +1041,27 @@ static int tcp_v4_parse_md5_keys(struct sock *sk, char __user *optval,
 			      GFP_KERNEL);
 }
 
+static int tcp_v4_parse_md5_keys(struct sock *sk, char __user *optval,
+				 int optlen)
+{
+	struct tcpao_key key;
+	struct sockaddr_in *sin = (struct sockaddr_in *)&cmd.tcpm_addr;
+	
+	if (optlen < sizeof(key))
+		return -EINVAL;
+
+	if (copy_from_user(&cmd, optval, sizeof(cmd)))
+		return -EFAULT;
+
+	if (sin->sin_family != AF_INET)
+		return -EINVAL;
+
+	if (key.master_len > TCP_AO_MAX_MASTER_LEN)
+		return -EINVAL;
+	
+	//TODO
+}
+
 static int tcp_v4_md5_hash_headers(struct tcp_md5sig_pool *hp,
 				   __be32 daddr, __be32 saddr,
 				   const struct tcphdr *th, int nbytes)
@@ -1824,13 +1845,15 @@ const struct inet_connection_sock_af_ops ipv4_specific = {
 };
 EXPORT_SYMBOL(ipv4_specific);
 
-#ifdef CONFIG_TCP_MD5SIG
 static const struct tcp_sock_af_ops tcp_sock_ipv4_specific = {
+#ifdef CONFIG_TCP_MD5SIG
 	.md5_lookup		= tcp_v4_md5_lookup,
 	.calc_md5_hash		= tcp_v4_md5_hash_skb,
 	.md5_parse		= tcp_v4_parse_md5_keys,
-};
 #endif
+	.ao_parse		= tcp_v4_parse_ao_key,
+};
+
 
 /* NOTE: A lot of things set to zero explicitly by call to
  *       sk_alloc() so need not be done here.
@@ -1843,9 +1866,7 @@ static int tcp_v4_init_sock(struct sock *sk)
 
 	icsk->icsk_af_ops = &ipv4_specific;
 
-#ifdef CONFIG_TCP_MD5SIG
 	tcp_sk(sk)->af_specific = &tcp_sock_ipv4_specific;
-#endif
 
 	return 0;
 }

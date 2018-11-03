@@ -2681,6 +2681,14 @@ static int do_tcp_setsockopt(struct sock *sk, int level,
 		err = tp->af_specific->md5_parse(sk, optval, optlen);
 		break;
 #endif
+	case TCP_AO_REGISTER:
+		err = tp->af_specific->ao_parse(sk, optval, optlen);
+		break;
+		
+	case TCP_AO_UNREGISTER:
+		//TODO AO
+		break;
+
 	case TCP_USER_TIMEOUT:
 		/* Cap the max time in ms TCP will retry or probe the window
 		 * before giving up and aborting (ETIMEDOUT) a connection.
