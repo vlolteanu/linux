@@ -134,6 +134,8 @@ struct tcp_request_sock {
 						  * FastOpen it's the seq#
 						  * after data-in-SYN.
 						  */
+	
+	struct tcp_ao_session_key	*ao_session_key;
 };
 
 static inline struct tcp_request_sock *tcp_rsk(const struct request_sock *req)
@@ -362,6 +364,8 @@ struct tcp_sock {
 	struct tcp_md5sig_info	__rcu *md5sig_info;
 #endif
 	struct tcp_md5sig_info	__rcu *ao_info;
+	
+	struct tcp_ao_session_key     *ao_session_key;
 
 /* TCP fastopen related information */
 	struct tcp_fastopen_request *fastopen_req;
@@ -412,6 +416,7 @@ struct tcp_timewait_sock {
 #ifdef CONFIG_TCP_MD5SIG
 	struct tcp_md5sig_key	  *tw_md5_key;
 #endif
+	struct tcp_ao_session_key *tw_ao_key;
 };
 
 static inline struct tcp_timewait_sock *tcp_twsk(const struct sock *sk)

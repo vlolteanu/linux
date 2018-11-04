@@ -303,6 +303,11 @@ void tcp_time_wait(struct sock *sk, int state, int timeo)
 			}
 		} while (0);
 #endif
+		if (tp->ao_session_key) {
+			tcptw->tw_ao_key = kmemdup(tp->ao_session_key, sizeof(*tp->ao_session_key), GFP_ATOMIC);
+			if (tcptw->tw_ao_key)
+				tcp_ao_master_key_use(tcptw->tw_ao_key->master);
+		}
 
 		/* Get the TIME_WAIT timeout firing. */
 		if (timeo < rto)
@@ -330,12 +335,17 @@ void tcp_time_wait(struct sock *sk, int state, int timeo)
 
 void tcp_twsk_destructor(struct sock *sk)
 {
-#ifdef CONFIG_TCP_MD5SIG
 	struct tcp_timewait_sock *twsk = tcp_twsk(sk);
 
+#ifdef CONFIG_TCP_MD5SIG
 	if (twsk->tw_md5_key)
 		kfree_rcu(twsk->tw_md5_key, rcu);
 #endif
+	
+	if (!twsk->tw_ao_key)
+		return;
+	tcp_ao_master_key_unuse(twsk->tw_ao_key->master);
+	kfree(twsk->tw_ao_key);
 }
 EXPORT_SYMBOL_GPL(tcp_twsk_destructor);
 
