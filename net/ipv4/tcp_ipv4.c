@@ -926,6 +926,34 @@ struct tcp_md5sig_key *tcp_md5_do_lookup(const struct sock *sk,
 }
 EXPORT_SYMBOL(tcp_md5_do_lookup);
 
+struct tcp_ao_keychain *tcp_ao_do_lookup(const struct sock *sk,
+					 const union tcp_md5_addr *addr,
+					 int family)
+{
+	const struct tcp_sock *tp = tcp_sk(sk);
+	struct tcp_ao_keychain *keychain;
+	unsigned int size = sizeof(struct in_addr);
+	const struct tcp_md5sig_info *ao_info;
+
+	/* caller either holds rcu_read_lock() or socket lock */
+	ao_info = rcu_dereference_check(tp->ao_info,
+				       lockdep_sock_is_held(sk));
+	if (!ao_info)
+		return NULL;
+#if IS_ENABLED(CONFIG_IPV6)
+	if (family == AF_INET6)
+		size = sizeof(struct in6_addr);
+#endif
+	hlist_for_each_entry_rcu(keychain, &ao_info->head, node) {
+		if (keychain->family != family)
+			continue;
+		if (!memcmp(&keychain->addr, addr, size))
+			return keychain;
+	}
+	return NULL;
+}
+EXPORT_SYMBOL(tcp_ao_do_lookup);
+
 struct tcp_md5sig_key *tcp_v4_md5_lookup(const struct sock *sk,
 					 const struct sock *addr_sk)
 {
@@ -984,6 +1012,70 @@ int tcp_md5_do_add(struct sock *sk, const union tcp_md5_addr *addr,
 }
 EXPORT_SYMBOL(tcp_md5_do_add);
 
+int tcp_ao_do_add(struct sock *sk, const union tcp_md5_addr *addr,
+		  int family, const u8 *newkey, u8 newkeylen,
+		  u8 send_id, u8 recv_id, u16 flags, u16 kdf, u16 hmac,
+		  gfp_t gfp)
+{
+	struct tcp_ao_keychain *keychain;
+	struct tcp_sock *tp = tcp_sk(sk);
+	struct tcp_md5sig_info *ao_info;
+	struct tcp_ao_master_key *master_key;
+
+	ao_info = rcu_dereference_protected(tp->ao_info,
+					   lockdep_sock_is_held(sk));
+	if (!ao_info) {
+		ao_info = kmalloc(sizeof(*ao_info), gfp);
+		if (!ao_info)
+			return -ENOMEM;
+
+		sk_nocaps_add(sk, NETIF_F_GSO_MASK);
+		INIT_HLIST_HEAD(&ao_info->head);
+		rcu_assign_pointer(tp->ao_info, ao_info);
+	}
+	
+	keychain = tcp_ao_do_lookup(sk, addr, family);
+	if (!keychain) {
+		keychain = sock_kmalloc(sk, sizeof(*keychain), gfp);
+		memset(keychain, 0, sizeof(*keychain));
+		keychain->family = family;
+		memcpy(&keychain->addr, addr,
+		       (family == AF_INET6) ? sizeof(struct in6_addr) :
+		       sizeof(struct in_addr));
+		hlist_add_head_rcu(&keychain->node, &ao_info->head);
+	}
+	
+	master_key = kmalloc(sizeof(*master_key), gfp);
+	if (!master_key)
+		return -ENOMEM;
+	master_key->send_id = send_id;
+	master_key->recv_id = recv_id;
+	master_key->flags = flags;
+	master_key->kdf = kdf;
+	master_key->hmac = hmac;
+	master_key->master_len = newkeylen;
+	memcpy(master_key->master, newkey, newkeylen);
+	atomic_set(&master_key->refcnt, 1);
+	master_key->valid = 1;
+	master_key->next = NULL;
+	
+	spin_lock(&keychain->wlock);
+	if (!keychain->head) {
+		keychain->head = master_key;
+	} else {
+		struct tcp_ao_master_key *tail = keychain->head;
+		
+		while (tail->next)
+			tail = tail->next;
+		tail->next = master_key;
+	}
+	spin_unlock(&keychain->wlock);
+	
+	return 0;
+}
+EXPORT_SYMBOL(tcp_ao_do_add);
+
+
 int tcp_md5_do_del(struct sock *sk, const union tcp_md5_addr *addr, int family)
 {
 	struct tcp_md5sig_key *key;
@@ -1041,16 +1133,16 @@ static int tcp_v4_parse_md5_keys(struct sock *sk, char __user *optval,
 			      GFP_KERNEL);
 }
 
-static int tcp_v4_parse_md5_keys(struct sock *sk, char __user *optval,
+static int tcp_v4_parse_ao_key(struct sock *sk, char __user *optval,
 				 int optlen)
 {
 	struct tcpao_key key;
-	struct sockaddr_in *sin = (struct sockaddr_in *)&cmd.tcpm_addr;
+	struct sockaddr_in *sin = (struct sockaddr_in *)&key.addr;
 	
 	if (optlen < sizeof(key))
 		return -EINVAL;
 
-	if (copy_from_user(&cmd, optval, sizeof(cmd)))
+	if (copy_from_user(&key, optval, sizeof(key)))
 		return -EFAULT;
 
 	if (sin->sin_family != AF_INET)
@@ -1059,7 +1151,10 @@ static int tcp_v4_parse_md5_keys(struct sock *sk, char __user *optval,
 	if (key.master_len > TCP_AO_MAX_MASTER_LEN)
 		return -EINVAL;
 	
-	//TODO
+	return tcp_ao_do_add(sk, (union tcp_md5_addr *)&sin->sin_addr.s_addr,
+			      AF_INET, key.master, key.master_len,
+			      key.send_id, key.recv_id, key.flags, key.kdf, key.hmac,
+			      GFP_KERNEL);
 }
 
 static int tcp_v4_md5_hash_headers(struct tcp_md5sig_pool *hp,

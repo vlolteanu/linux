@@ -3299,6 +3299,17 @@ EXPORT_SYMBOL(tcp_md5_hash_key);
 
 #endif
 
+void tcp_ao_master_key_unuse(struct tcp_ao_master_key *key)
+{
+	atomic_dec(&key->refcnt);
+	if (atomic_read(&key->refcnt))
+		return;
+	if (key->next)
+		tcp_ao_master_key_unuse(key->next);
+	kfree(key);
+}
+EXPORT_SYMBOL(tcp_ao_master_key_unuse);
+
 void tcp_done(struct sock *sk)
 {
 	struct request_sock *req = tcp_sk(sk)->fastopen_rsk;

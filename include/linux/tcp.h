@@ -361,6 +361,7 @@ struct tcp_sock {
 /* TCP MD5 Signature Option information */
 	struct tcp_md5sig_info	__rcu *md5sig_info;
 #endif
+	struct tcp_md5sig_info	__rcu *ao_info;
 
 /* TCP fastopen related information */
 	struct tcp_fastopen_request *fastopen_req;

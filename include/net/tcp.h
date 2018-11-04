@@ -1401,6 +1401,49 @@ struct tcp_md5sig_key {
 	struct rcu_head		rcu;
 };
 
+struct tcp_ao_master_key {
+	u8 send_id;
+	u8 recv_id;
+
+	u16 flags;
+
+	u16 kdf;
+	u16 hmac;
+
+	u16 master_len;
+	u8 master[TCP_AO_MAX_MASTER_LEN];
+	
+	atomic_t refcnt;
+	int valid;
+	
+	struct tcp_ao_master_key *next;
+};
+
+static inline void tcp_ao_master_key_use(struct tcp_ao_master_key *key)
+{
+	atomic_inc(&key->refcnt);
+}
+
+void tcp_ao_master_key_unuse(struct tcp_ao_master_key *key);
+
+#define TCP_AO_MAX_SESSION_LEN 128
+
+struct tcp_ao_session_key {
+	u8 session[TCP_AO_MAX_SESSION_LEN];
+	u16 session_len;
+	
+	struct tcp_ao_master_key *master;
+};
+
+struct tcp_ao_keychain {
+	struct hlist_node		node;
+	u8				family; /* AF_INET or AF_INET6 */
+	union tcp_md5_addr		addr;
+	struct tcp_ao_master_key	*head;
+	struct rcu_head			rcu;
+	spinlock_t wlock;
+};
+
 /* - sock block */
 struct tcp_md5sig_info {
 	struct hlist_head	head;
